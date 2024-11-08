@@ -1,5 +1,7 @@
 import requests
 from utils.db import Db
+from math import ceil
+import urllib.parse
 
 
 class Parse(Db):
@@ -72,20 +74,44 @@ class Parse(Db):
 
     def get_rpcs(self) -> list:
         for link in self.rpc_links:
-            result = self.get_respose(link)
+            result = self.get_next_rpcs(link) 
             if result:
-                if 'result' in result and result['result']:
-                    if 'validators' in result['result'] and result['result']['validators']:
-                        return result['result']['validators']
+                return result
         raise Exception("Failed to retrieve RPC data from the specified links.")
+    
+    def get_next_rpcs(self, url: str, result_nex: list = [], pages:int = 1, total_pages:int = 0) -> dict:
+        result = self.get_respose(url)
+        if result:
+            if 'result' in result and result['result']:
+                r = result['result']
+                if total_pages == 0 and 'total' in r and r['total'] and 'count' in r and r['count']:
+                    total_pages = ceil(int(r['total'])/int(r['count']))
+                if 'validators' in result['result'] and result['result']['validators']:
+                    result_nex.extend(result['result']['validators'])  
+                if pages <= total_pages:
+                    page = pages + 1
+                    link = url.split('?')[0] + f'?page={pages}'
+                    return self.get_next_rpcs(link, result_nex, page, total_pages)       
+        return result_nex
     
     def get_apis(self) -> list:
         for link in self.api_links:
-            result = self.get_respose(link)
+            result = self.get_next_moniker(link)
             if result:
-                if 'validators' in result and result['validators']:
-                    return result['validators']
+                return result
         raise Exception("Failed to retrieve API data from the specified links.")
+    
+    def get_next_moniker(self, url: str, result_nex: list = []) -> dict:
+        result = self.get_respose(url)
+        if result:
+            if 'validators' in result and result['validators']:
+                result_nex.extend(result['validators']) 
+                if 'pagination' in result and result['pagination']:
+                    url = url.split('?')[0]
+                    encoded_next_key = encoded_next_key = urllib.parse.quote(result['pagination']['next_key'])
+                    link = url + f"?pagination.key={encoded_next_key}"
+                    return self.get_next_moniker(link, result_nex)                    
+        return result_nex
 
     def get_respose(self, link: str) -> dict:
         try:
